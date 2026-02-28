@@ -1,0 +1,146 @@
+name: PR VI History
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'Pull request number in this repository'
+        required: true
+        type: string
+      fetch_depth:
+        description: 'Depth used when fetching pull/<pr>/head'
+        required: false
+        default: '20'
+        type: string
+      max_pairs:
+        description: 'Maximum commit pairs per VI (0 = all)'
+        required: false
+        default: '6'
+        type: string
+      compare_modes:
+        description: 'Optional comma/semicolon/newline separated mode list'
+        required: false
+        default: ''
+        type: string
+      include_merge_parents:
+        description: 'Include merge-parent lineage while walking history'
+        required: false
+        default: false
+        type: boolean
+      results_root:
+        description: 'Root directory for generated history artifacts'
+        required: false
+        default: 'tests/results/pr-vi-history'
+        type: string
+      upload_artifact:
+        description: 'Upload generated history artifacts'
+        required: false
+        default: true
+        type: boolean
+      post_comment:
+        description: 'Post markdown summary as a PR comment'
+        required: false
+        default: true
+        type: boolean
+      note:
+        description: 'Optional note appended to PR comment output'
+        required: false
+        default: ''
+        type: string
+  workflow_call:
+    inputs:
+      pr_number:
+        description: 'Pull request number in the caller repository'
+        required: true
+        type: string
+      fetch_depth:
+        description: 'Depth used when fetching pull/<pr>/head'
+        required: false
+        default: '20'
+        type: string
+      max_pairs:
+        description: 'Maximum commit pairs per VI (0 = all)'
+        required: false
+        default: '6'
+        type: string
+      compare_modes:
+        description: 'Optional comma/semicolon/newline separated mode list'
+        required: false
+        default: ''
+        type: string
+      include_merge_parents:
+        description: 'Include merge-parent lineage while walking history'
+        required: false
+        default: false
+        type: boolean
+      results_root:
+        description: 'Root directory for generated history artifacts'
+        required: false
+        default: 'tests/results/pr-vi-history'
+        type: string
+      upload_artifact:
+        description: 'Upload generated history artifacts'
+        required: false
+        default: true
+        type: boolean
+      post_comment:
+        description: 'Post markdown summary as a PR comment'
+        required: false
+        default: false
+        type: boolean
+      note:
+        description: 'Optional note appended to PR comment output'
+        required: false
+        default: ''
+        type: string
+    outputs:
+      summary_path:
+        description: 'Absolute path to pr-vi-history-summary@v1 json'
+        value: ${{ jobs.history.outputs.summary_path }}
+      results_root:
+        description: 'Absolute path to artifact root'
+        value: ${{ jobs.history.outputs.results_root }}
+      manifest_path:
+        description: 'Absolute path to vi-diff-manifest@v1 json'
+        value: ${{ jobs.history.outputs.manifest_path }}
+      pair_count:
+        description: 'Manifest pair count'
+        value: ${{ jobs.history.outputs.pair_count }}
+      target_count:
+        description: 'Summarized target count'
+        value: ${{ jobs.history.outputs.target_count }}
+      completed_count:
+        description: 'Completed target count'
+        value: ${{ jobs.history.outputs.completed_count }}
+      diff_count:
+        description: 'Total diff count from summary markdown payload'
+        value: ${{ jobs.history.outputs.diff_count }}
+      markdown_path:
+        description: 'Absolute path to rendered markdown summary'
+        value: ${{ jobs.history.outputs.markdown_path }}
+      artifact_name:
+        description: 'Uploaded artifact name'
+        value: ${{ jobs.history.outputs.artifact_name }}
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: pr-vi-history-${{ github.repository }}-${{ inputs.pr_number }}
+  cancel-in-progress: false
+
+jobs:
+  history:
+    uses: svelderrainruiz/compare-vi-cli-action/.github/workflows/pr-vi-history-reusable.yml@develop
+    with:
+      pr_number: ${{ inputs.pr_number }}
+      fetch_depth: ${{ inputs.fetch_depth }}
+      max_pairs: ${{ inputs.max_pairs }}
+      compare_modes: ${{ inputs.compare_modes }}
+      include_merge_parents: ${{ inputs.include_merge_parents }}
+      results_root: ${{ inputs.results_root }}
+      upload_artifact: ${{ inputs.upload_artifact }}
+      post_comment: ${{ inputs.post_comment }}
+      note: ${{ inputs.note }}
+    secrets: inherit
