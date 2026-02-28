@@ -430,7 +430,7 @@ jobs:
           }
           if ($modeTokens.Count -gt 0) {
             $args += '-Mode'
-            $args += $modeTokens
+            $args += ($modeTokens -join ',')
           }
           $includeMergeParents = [string]::Equals($env:INCLUDE_MERGE_PARENTS, 'true', [System.StringComparison]::OrdinalIgnoreCase)
           if ($includeMergeParents) {
@@ -830,7 +830,7 @@ jobs:
           Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value ("- Linux lane status: **{0}**" -f $linuxLaneStatus)
           Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value ("- Pair count: **{0}**" -f $pairCount)
           if (-not [string]::IsNullOrWhiteSpace($env:LINUX_SMOKE_SUMMARY_PATH)) {
-            Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value ("- Linux smoke summary: `{0}`" -f $env:LINUX_SMOKE_SUMMARY_PATH)
+            Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value ('- Linux smoke summary: `{0}`' -f $env:LINUX_SMOKE_SUMMARY_PATH)
           }
 
       - name: Append markdown summary
