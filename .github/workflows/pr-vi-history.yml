@@ -402,6 +402,7 @@ jobs:
           RESULTS_ROOT: ${{ steps.paths.outputs.results_root }}
           SUMMARY_PATH: ${{ steps.paths.outputs.summary_path }}
           TOOLS_ROOT: ${{ github.workspace }}\\.pr-vi-history-tools
+          COMPAREVI_SCRIPTS_ROOT: ${{ github.workspace }}\\.pr-vi-history-tools
           PR_VI_HISTORY_COMPARE_BACKEND: ni-windows-container
           PR_VI_HISTORY_WINDOWS_IMAGE: ${{ inputs.windows_image }}
         shell: pwsh
