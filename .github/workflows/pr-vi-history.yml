@@ -238,6 +238,14 @@ jobs:
           git checkout --detach ("pr-{0}-head" -f $prNumber)
           git branch -D ("pr-{0}-head" -f $prNumber) 2>$null | Out-Null
 
+      - name: Checkout reusable workflow tools
+        uses: actions/checkout@v5
+        with:
+          repository: svelderrainruiz/pr-vi-history
+          ref: ${{ github.workflow_sha }}
+          path: .pr-vi-history
+          fetch-depth: 1
+
       - name: Generate VI diff manifest
         id: manifest
         env:
@@ -249,7 +257,13 @@ jobs:
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
 
-          pwsh -NoLogo -NoProfile -File (Join-Path $env:GITHUB_WORKSPACE 'tools' 'Get-PRVIDiffManifest.ps1') `
+          $toolsRoot = Join-Path $env:GITHUB_WORKSPACE '.pr-vi-history' 'tools'
+          $manifestScript = Join-Path $toolsRoot 'Get-PRVIDiffManifest.ps1'
+          if (-not (Test-Path -LiteralPath $manifestScript -PathType Leaf)) {
+            throw ("Missing manifest script: {0}" -f $manifestScript)
+          }
+
+          pwsh -NoLogo -NoProfile -File $manifestScript `
             -BaseRef $env:BASE_SHA `
             -HeadRef $env:HEAD_SHA `
             -OutputPath $env:MANIFEST_PATH
@@ -286,10 +300,16 @@ jobs:
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
 
+          $toolsRoot = Join-Path $env:GITHUB_WORKSPACE '.pr-vi-history' 'tools'
+          $historyScript = Join-Path $toolsRoot 'Invoke-PRVIHistory.ps1'
+          if (-not (Test-Path -LiteralPath $historyScript -PathType Leaf)) {
+            throw ("Missing compare script: {0}" -f $historyScript)
+          }
+
           $args = @(
             '-NoLogo',
             '-NoProfile',
-            '-File', (Join-Path $env:GITHUB_WORKSPACE 'tools' 'Invoke-PRVIHistory.ps1'),
+            '-File', $historyScript,
             '-ManifestPath', $env:MANIFEST_PATH,
             '-ResultsRoot', $env:RESULTS_ROOT,
             '-SummaryPath', $env:SUMMARY_PATH
@@ -336,15 +356,28 @@ jobs:
             throw 'History summary path missing after compare execution.'
           }
 
+          $toolsRoot = Join-Path $env:GITHUB_WORKSPACE '.pr-vi-history' 'tools'
+          $summaryScript = Join-Path $toolsRoot 'Summarize-PRVIHistory.ps1'
+          if (-not (Test-Path -LiteralPath $summaryScript -PathType Leaf)) {
+            throw ("Missing summary script: {0}" -f $summaryScript)
+          }
+
           $markdownPath = Join-Path $env:RESULTS_ROOT 'vi-history-summary.md'
           $expandedPath = Join-Path $env:RESULTS_ROOT 'vi-history-summary-expanded.json'
 
-          pwsh -NoLogo -NoProfile -File (Join-Path $env:GITHUB_WORKSPACE 'tools' 'Summarize-PRVIHistory.ps1') `
+          pwsh -NoLogo -NoProfile -File $summaryScript `
             -SummaryPath $env:SUMMARY_PATH `
             -MarkdownPath $markdownPath `
             -OutputJsonPath $expandedPath
 
           "markdown_path=$markdownPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          if (Test-Path -LiteralPath $markdownPath -PathType Leaf) {
+            $markdown = Get-Content -LiteralPath $markdownPath -Raw
+            if (-not [string]::IsNullOrWhiteSpace($markdown)) {
+              $encoded = $markdown.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+              "markdown=$encoded" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            }
+          }
 
       - name: Append workflow summary
         if: always()
