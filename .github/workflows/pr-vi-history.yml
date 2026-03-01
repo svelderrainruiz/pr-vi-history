@@ -136,7 +136,7 @@ on:
       tools_repository:
         description: Repository providing internal PR VI history composite actions
         required: false
-        default: svelderrainruiz/pr-vi-history-fork
+        default: LabVIEW-Community-CI-CD/pr-vi-history
         type: string
       tools_ref:
         description: Ref (tag/branch/SHA) for toolchain checkout repository
@@ -241,7 +241,7 @@ jobs:
       - name: Checkout workflow toolchain
         uses: actions/checkout@v5
         with:
-          repository: ${{ inputs.tools_repository || 'svelderrainruiz/pr-vi-history-fork' }}
+          repository: ${{ inputs.tools_repository || 'LabVIEW-Community-CI-CD/pr-vi-history' }}
           ref: ${{ inputs.tools_ref || 'main' }}
           path: .pr-vi-history-tools
           fetch-depth: 1
@@ -293,7 +293,7 @@ jobs:
       - name: Checkout workflow toolchain
         uses: actions/checkout@v5
         with:
-          repository: ${{ inputs.tools_repository || 'svelderrainruiz/pr-vi-history-fork' }}
+          repository: ${{ inputs.tools_repository || 'LabVIEW-Community-CI-CD/pr-vi-history' }}
           ref: ${{ inputs.tools_ref || 'main' }}
           path: .pr-vi-history-tools
           fetch-depth: 1
@@ -378,7 +378,7 @@ jobs:
       - name: Checkout workflow toolchain
         uses: actions/checkout@v5
         with:
-          repository: ${{ inputs.tools_repository || 'svelderrainruiz/pr-vi-history-fork' }}
+          repository: ${{ inputs.tools_repository || 'LabVIEW-Community-CI-CD/pr-vi-history' }}
           ref: ${{ inputs.tools_ref || 'main' }}
           path: .pr-vi-history-tools
           fetch-depth: 1
@@ -447,7 +447,7 @@ jobs:
       - name: Checkout workflow toolchain
         uses: actions/checkout@v5
         with:
-          repository: ${{ inputs.tools_repository || 'svelderrainruiz/pr-vi-history-fork' }}
+          repository: ${{ inputs.tools_repository || 'LabVIEW-Community-CI-CD/pr-vi-history' }}
           ref: ${{ inputs.tools_ref || 'main' }}
           path: .pr-vi-history-tools
           fetch-depth: 1
