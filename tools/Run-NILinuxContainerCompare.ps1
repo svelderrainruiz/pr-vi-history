@@ -231,7 +231,7 @@ resolve_cli_path() {
 }
 
 resolve_labview_path() {
-  if [[ -n "${COMPARE_LABVIEW_PATH_ARG:-}" ]] && [[ -x "${COMPARE_LABVIEW_PATH_ARG}" ]]; then
+  if [[ -n "${COMPARE_LABVIEW_PATH_ARG:-}" ]]; then
     printf '%s' "${COMPARE_LABVIEW_PATH_ARG}"
     return 0
   fi
@@ -244,11 +244,29 @@ resolve_labview_path() {
   )
   local candidate
   for candidate in "${candidates[@]}"; do
-    if [[ -x "${candidate}" ]]; then
+    if [[ -f "${candidate}" ]]; then
       printf '%s' "${candidate}"
       return 0
     fi
   done
+
+  if [[ -n "${cli_path:-}" ]]; then
+    local cli_dir
+    cli_dir="$(dirname "${cli_path}")"
+    for candidate in "${cli_dir}/labview" "${cli_dir}/LabVIEW"; do
+      if [[ -f "${candidate}" ]]; then
+        printf '%s' "${candidate}"
+        return 0
+      fi
+    done
+  fi
+
+  local discovered
+  discovered="$(find /usr/local/natinst -maxdepth 5 -type f \( -iname 'labview' -o -iname 'LabVIEW' \) 2>/dev/null | head -n 1 || true)"
+  if [[ -n "${discovered}" ]]; then
+    printf '%s' "${discovered}"
+    return 0
+  fi
 
   return 1
 }
@@ -260,6 +278,10 @@ if [[ -z "${cli_path}" ]]; then
 fi
 
 labview_path="$(resolve_labview_path || true)"
+if [[ -z "${labview_path}" ]]; then
+  echo "LabVIEW executable path could not be auto-resolved in container." >&2
+  exit 2
+fi
 
 xvfb_pid=""
 if [[ -z "${DISPLAY:-}" ]]; then
@@ -288,6 +310,7 @@ declare -a args=(
 )
 
 if [[ -n "${labview_path:-}" ]]; then
+  echo "[ni-linux-container] LabVIEWPath=${labview_path}"
   args+=("-LabVIEWPath" "${labview_path}")
 fi
 
