@@ -33,7 +33,7 @@ on:
       timeout_seconds:
         description: Compare timeout in seconds
         required: false
-        default: '600'
+        default: '420'
         type: string
       upload_artifact:
         description: Upload compare artifacts
@@ -44,6 +44,16 @@ on:
         description: Artifact name
         required: false
         default: vi-history-linux-compare
+        type: string
+      tools_repository:
+        description: Repository hosting reusable compare tools
+        required: false
+        default: svelderrainruiz/pr-vi-history
+        type: string
+      tools_ref:
+        description: Ref (branch/tag/SHA) for reusable compare tools
+        required: false
+        default: main
         type: string
   workflow_call:
     inputs:
@@ -73,7 +83,7 @@ on:
       timeout_seconds:
         description: Compare timeout in seconds
         required: false
-        default: '600'
+        default: '420'
         type: string
       upload_artifact:
         description: Upload compare artifacts
@@ -84,6 +94,16 @@ on:
         description: Artifact name
         required: false
         default: vi-history-linux-compare
+        type: string
+      tools_repository:
+        description: Repository hosting reusable compare tools
+        required: false
+        default: svelderrainruiz/pr-vi-history
+        type: string
+      tools_ref:
+        description: Ref (branch/tag/SHA) for reusable compare tools
+        required: false
+        default: main
         type: string
     outputs:
       report_path:
@@ -124,7 +144,7 @@ jobs:
   linux_compare:
     name: Hosted Linux VI compare
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     outputs:
       report_path: ${{ steps.collect.outputs.report_path }}
       capture_path: ${{ steps.collect.outputs.capture_path }}
@@ -139,6 +159,13 @@ jobs:
     steps:
       - name: Checkout workflow repository
         uses: actions/checkout@v5
+
+      - name: Checkout reusable workflow tools
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ inputs.tools_repository }}
+          ref: ${{ inputs.tools_ref }}
+          path: .pr-vi-history-tools
 
       - name: Resolve compare paths
         id: paths
@@ -170,7 +197,7 @@ jobs:
 
       - name: Pull NI Linux image
         shell: bash
-        run: docker pull "${{ inputs.linux_image }}"
+        run: timeout 300s docker pull "${{ inputs.linux_image }}"
 
       - name: Run Linux container compare
         id: compare
@@ -179,7 +206,7 @@ jobs:
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Continue'
-          $toolPath = Join-Path $env:GITHUB_WORKSPACE 'tools' 'Run-NILinuxContainerCompare.ps1'
+          $toolPath = Join-Path (Join-Path $env:GITHUB_WORKSPACE '.pr-vi-history-tools' 'tools') 'Run-NILinuxContainerCompare.ps1'
           if (-not (Test-Path -LiteralPath $toolPath -PathType Leaf)) {
             throw ("Missing compare tool: {0}" -f $toolPath)
           }
@@ -264,7 +291,7 @@ jobs:
             }
           }
 
-          if (Test-Path -LiteralPath $reportPath -PathType Leaf -and "${{ inputs.report_type }}".ToLowerInvariant() -eq 'html') {
+          if ((Test-Path -LiteralPath $reportPath -PathType Leaf) -and ("${{ inputs.report_type }}".ToLowerInvariant() -eq 'html')) {
             $html = Get-Content -LiteralPath $reportPath -Raw
             $diffDetailCount = [regex]::Matches($html, 'li\.diff-detail(?:-cosmetic)?', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase).Count
             $diffImageCount = [regex]::Matches($html, '<img[^>]+difference-image', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase).Count
@@ -286,8 +313,8 @@ jobs:
           Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value ("- Status: **{0}**" -f $compareStatus)
           Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value ("- Result class: **{0}**" -f $resultClass)
           Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value ("- Diff detected: **{0}**" -f $isDiff)
-          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value ("- Report: `{0}`" -f $reportPath)
-          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value ("- Capture: `{0}`" -f $capturePath)
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value ('- Report: `{0}`' -f $reportPath)
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value ('- Capture: `{0}`' -f $capturePath)
 
       - name: Upload Linux compare artifacts
         if: ${{ always() && (inputs.upload_artifact == true || inputs.upload_artifact == 'true') }}

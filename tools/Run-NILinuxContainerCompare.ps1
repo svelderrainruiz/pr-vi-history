@@ -79,6 +79,20 @@ function Assert-Tool {
   }
 }
 
+function Get-TempRoot {
+  $candidate = [string]$env:TEMP
+  if ([string]::IsNullOrWhiteSpace($candidate)) {
+    $candidate = [string]$env:TMPDIR
+  }
+  if ([string]::IsNullOrWhiteSpace($candidate)) {
+    $candidate = [System.IO.Path]::GetTempPath()
+  }
+  if ([string]::IsNullOrWhiteSpace($candidate)) {
+    throw 'Unable to resolve a temporary directory path.'
+  }
+  return [System.IO.Path]::GetFullPath($candidate)
+}
+
 function Resolve-ExistingFilePath {
   param(
     [Parameter(Mandatory)][string]$InputPath,
@@ -104,21 +118,21 @@ function Resolve-ReportTypeInfo {
     'html' {
       return [pscustomobject]@{
         InputType     = 'html'
-        CliReportType = 'HTMLSingleFile'
+        CliReportType = 'html'
         Extension     = 'html'
       }
     }
     'xml' {
       return [pscustomobject]@{
         InputType     = 'xml'
-        CliReportType = 'XML'
+        CliReportType = 'xml'
         Extension     = 'xml'
       }
     }
     'text' {
       return [pscustomobject]@{
         InputType     = 'text'
-        CliReportType = 'Text'
+        CliReportType = 'text'
         Extension     = 'txt'
       }
     }
@@ -216,11 +230,118 @@ resolve_cli_path() {
   return 1
 }
 
+resolve_labview_path() {
+  if [[ -n "${COMPARE_LABVIEW_PATH_ARG:-}" ]] && [[ -e "${COMPARE_LABVIEW_PATH_ARG}" ]]; then
+    printf '%s' "${COMPARE_LABVIEW_PATH_ARG}"
+    return 0
+  fi
+
+  local candidates=(
+    "/usr/local/natinst/LabVIEW-2026Q1-64/labview"
+    "/usr/local/natinst/LabVIEW-2026Q1-64/LabVIEW"
+    "/usr/local/natinst/LabVIEW-2026-64/labview"
+    "/usr/local/natinst/LabVIEW-2026-64/LabVIEW"
+    "/usr/local/natinst/LabVIEW-2025-64/labview"
+    "/usr/local/natinst/LabVIEW-2025-64/LabVIEW"
+  )
+  local candidate
+  for candidate in "${candidates[@]}"; do
+    if [[ -f "${candidate}" ]]; then
+      printf '%s' "${candidate}"
+      return 0
+    fi
+  done
+
+  if [[ -n "${cli_path:-}" ]]; then
+    local cli_dir
+    cli_dir="$(dirname "${cli_path}")"
+    for candidate in "${cli_dir}/labview" "${cli_dir}/LabVIEW"; do
+      if [[ -f "${candidate}" ]]; then
+        printf '%s' "${candidate}"
+        return 0
+      fi
+    done
+    if [[ "${cli_dir}" == *"/LabVIEW-"* ]] && [[ -d "${cli_dir}" ]]; then
+      printf '%s' "${cli_dir}"
+      return 0
+    fi
+  fi
+
+  local discovered
+  discovered="$(find /usr/local/natinst -maxdepth 5 -type f \( -iname 'labview' -o -iname 'LabVIEW' \) 2>/dev/null | head -n 1 || true)"
+  if [[ -n "${discovered}" ]]; then
+    printf '%s' "${discovered}"
+    return 0
+  fi
+
+  local discovered_dir
+  discovered_dir="$(find /usr/local/natinst -maxdepth 3 -type d -name 'LabVIEW-2026Q*-64' 2>/dev/null | sort | tail -n 1 || true)"
+  if [[ -n "${discovered_dir}" ]]; then
+    for candidate in "${discovered_dir}/labview" "${discovered_dir}/LabVIEW"; do
+      if [[ -f "${candidate}" ]]; then
+        printf '%s' "${candidate}"
+        return 0
+      fi
+    done
+    printf '%s' "${discovered_dir}"
+    return 0
+  fi
+
+  discovered_dir="$(find /usr/local/natinst -maxdepth 3 -type d -name 'LabVIEW-2026*-64' 2>/dev/null | sort | tail -n 1 || true)"
+  if [[ -n "${discovered_dir}" ]]; then
+    for candidate in "${discovered_dir}/labview" "${discovered_dir}/LabVIEW"; do
+      if [[ -f "${candidate}" ]]; then
+        printf '%s' "${candidate}"
+        return 0
+      fi
+    done
+    printf '%s' "${discovered_dir}"
+    return 0
+  fi
+
+  discovered_dir="$(find /usr/local/natinst -maxdepth 3 -type d -name 'LabVIEW-*' 2>/dev/null | head -n 1 || true)"
+  if [[ -n "${discovered_dir}" ]]; then
+    for candidate in "${discovered_dir}/labview" "${discovered_dir}/LabVIEW"; do
+      if [[ -f "${candidate}" ]]; then
+        printf '%s' "${candidate}"
+        return 0
+      fi
+    done
+    printf '%s' "${discovered_dir}"
+    return 0
+  fi
+
+  return 1
+}
+
 cli_path="$(resolve_cli_path || true)"
 if [[ -z "${cli_path}" ]]; then
   echo "LabVIEW CLI executable not found in container." >&2
   exit 2
 fi
+
+labview_path="$(resolve_labview_path || true)"
+if [[ -z "${labview_path}" ]]; then
+  echo "LabVIEW executable path could not be auto-resolved in container." >&2
+  exit 2
+fi
+
+xvfb_pid=""
+if [[ -z "${DISPLAY:-}" ]]; then
+  if command -v Xvfb >/dev/null 2>&1; then
+    export DISPLAY=:99
+    Xvfb "${DISPLAY}" -screen 0 1280x1024x24 >/tmp/ni-xvfb.log 2>&1 &
+    xvfb_pid="$!"
+    sleep 2
+  fi
+fi
+
+cleanup() {
+  if [[ -n "${xvfb_pid}" ]]; then
+    kill "${xvfb_pid}" >/dev/null 2>&1 || true
+  fi
+}
+trap cleanup EXIT
 
 declare -a args=(
   "-OperationName" "CreateComparisonReport"
@@ -230,8 +351,9 @@ declare -a args=(
   "-ReportType" "${COMPARE_REPORT_TYPE}"
 )
 
-if [[ -n "${COMPARE_LABVIEW_PATH_ARG:-}" ]]; then
-  args+=("-LabVIEWPath" "${COMPARE_LABVIEW_PATH_ARG}")
+if [[ -n "${labview_path:-}" ]]; then
+  echo "[ni-linux-container] LabVIEWPath=${labview_path}"
+  args+=("-LabVIEWPath" "${labview_path}")
 fi
 
 if [[ -n "${COMPARE_FLAGS_B64:-}" ]]; then
@@ -264,9 +386,10 @@ function Invoke-DockerRunWithTimeout {
     [Parameter(Mandatory)][string]$ContainerName
   )
 
-  $stdoutFile = Join-Path $env:TEMP ("ni-linux-container-stdout-{0}.log" -f ([guid]::NewGuid().ToString('N')))
-  $stderrFile = Join-Path $env:TEMP ("ni-linux-container-stderr-{0}.log" -f ([guid]::NewGuid().ToString('N')))
-  $dockerArgsFile = Join-Path $env:TEMP ("ni-linux-container-docker-args-{0}.json" -f ([guid]::NewGuid().ToString('N')))
+  $tempRoot = Get-TempRoot
+  $stdoutFile = Join-Path $tempRoot ("ni-linux-container-stdout-{0}.log" -f ([guid]::NewGuid().ToString('N')))
+  $stderrFile = Join-Path $tempRoot ("ni-linux-container-stderr-{0}.log" -f ([guid]::NewGuid().ToString('N')))
+  $dockerArgsFile = Join-Path $tempRoot ("ni-linux-container-docker-args-{0}.json" -f ([guid]::NewGuid().ToString('N')))
   $process = $null
   try {
     $pwshPath = (Get-Command -Name 'pwsh' -ErrorAction SilentlyContinue | Select-Object -First 1).Source
@@ -359,7 +482,8 @@ function Test-LabVIEWCliFailure {
   return (
     $combined -match 'Error code\s*:' -or
     $combined -match 'An error occurred while running the LabVIEW CLI' -or
-    $combined -match 'LabVIEW CLI executable not found'
+    $combined -match 'LabVIEW CLI executable not found' -or
+    $combined -match 'Unable to open X display'
   )
 }
 
@@ -468,7 +592,7 @@ try {
     $containerHeadVi = Convert-HostFileToContainerPath -HostFilePath $headViPath -MountMap $mounts -MountIndex $mountRef
     $containerReportPath = Convert-HostFileToContainerPath -HostFilePath $resolvedReportPath -MountMap $mounts -MountIndex $mountRef
 
-    $scriptTempDir = Join-Path $env:TEMP ("ni-linux-container-script-{0}" -f ([guid]::NewGuid().ToString('N')))
+    $scriptTempDir = Join-Path (Get-TempRoot) ("ni-linux-container-script-{0}" -f ([guid]::NewGuid().ToString('N')))
     New-Item -ItemType Directory -Path $scriptTempDir -Force | Out-Null
     $hostContainerScriptPath = Join-Path $scriptTempDir 'run-compare.sh'
     New-ContainerScript | Set-Content -LiteralPath $hostContainerScriptPath -Encoding utf8
@@ -492,6 +616,7 @@ try {
     $dockerArgs += @('--env', ("COMPARE_REPORT_PATH={0}" -f $containerReportPath))
     $dockerArgs += @('--env', ("COMPARE_REPORT_TYPE={0}" -f $reportInfo.CliReportType))
     $dockerArgs += @('--env', ("COMPARE_FLAGS_B64={0}" -f $flagsB64))
+    $dockerArgs += @('--env', 'LV_RTE_HEADLESS=1')
     if (-not [string]::IsNullOrWhiteSpace($LabVIEWPath)) {
       $dockerArgs += @('--env', ("COMPARE_LABVIEW_PATH_ARG={0}" -f $LabVIEWPath))
     }
