@@ -231,7 +231,7 @@ resolve_cli_path() {
 }
 
 resolve_labview_path() {
-  if [[ -n "${COMPARE_LABVIEW_PATH_ARG:-}" ]]; then
+  if [[ -n "${COMPARE_LABVIEW_PATH_ARG:-}" ]] && [[ -e "${COMPARE_LABVIEW_PATH_ARG}" ]]; then
     printf '%s' "${COMPARE_LABVIEW_PATH_ARG}"
     return 0
   fi
@@ -259,12 +259,23 @@ resolve_labview_path() {
         return 0
       fi
     done
+    if [[ -d "${cli_dir}" ]]; then
+      printf '%s' "${cli_dir}"
+      return 0
+    fi
   fi
 
   local discovered
   discovered="$(find /usr/local/natinst -maxdepth 5 -type f \( -iname 'labview' -o -iname 'LabVIEW' \) 2>/dev/null | head -n 1 || true)"
   if [[ -n "${discovered}" ]]; then
     printf '%s' "${discovered}"
+    return 0
+  fi
+
+  local discovered_dir
+  discovered_dir="$(find /usr/local/natinst -maxdepth 3 -type d -name 'LabVIEW-*' 2>/dev/null | head -n 1 || true)"
+  if [[ -n "${discovered_dir}" ]]; then
+    printf '%s' "${discovered_dir}"
     return 0
   fi
 
