@@ -140,6 +140,13 @@ jobs:
       - name: Checkout workflow repository
         uses: actions/checkout@v5
 
+      - name: Checkout reusable workflow tools
+        uses: actions/checkout@v5
+        with:
+          repository: svelderrainruiz/pr-vi-history
+          ref: ${{ github.workflow_sha }}
+          path: .pr-vi-history-tools
+
       - name: Resolve compare paths
         id: paths
         shell: pwsh
@@ -179,7 +186,7 @@ jobs:
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Continue'
-          $toolPath = Join-Path $env:GITHUB_WORKSPACE 'tools' 'Run-NILinuxContainerCompare.ps1'
+          $toolPath = Join-Path (Join-Path $env:GITHUB_WORKSPACE '.pr-vi-history-tools' 'tools') 'Run-NILinuxContainerCompare.ps1'
           if (-not (Test-Path -LiteralPath $toolPath -PathType Leaf)) {
             throw ("Missing compare tool: {0}" -f $toolPath)
           }
@@ -264,7 +271,7 @@ jobs:
             }
           }
 
-          if (Test-Path -LiteralPath $reportPath -PathType Leaf -and "${{ inputs.report_type }}".ToLowerInvariant() -eq 'html') {
+          if ((Test-Path -LiteralPath $reportPath -PathType Leaf) -and ("${{ inputs.report_type }}".ToLowerInvariant() -eq 'html')) {
             $html = Get-Content -LiteralPath $reportPath -Raw
             $diffDetailCount = [regex]::Matches($html, 'li\.diff-detail(?:-cosmetic)?', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase).Count
             $diffImageCount = [regex]::Matches($html, '<img[^>]+difference-image', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase).Count
