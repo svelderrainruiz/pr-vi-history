@@ -5,6 +5,7 @@ Reusable GitHub workflow that treats pull requests as the VI history analysis su
 ## What this repository provides
 
 - `.github/workflows/pr-vi-history.yml` (reusable workflow)
+- `.github/workflows/vi-history-linux-compare.yml` (hosted Linux compare reusable workflow)
 - Local `tools/*` scripts required to generate manifest, run history compare,
   and render PR summaries.
 
@@ -60,6 +61,30 @@ jobs:
 - Additive lane-status outputs:
   - `windows_lane_status`
   - `linux_lane_status`
+
+## Hosted Linux compare by name
+
+Use this workflow when callers need a direct Linux hosted compare lane without
+running the full PR history graph.
+
+```yaml
+jobs:
+  linux-compare:
+    uses: svelderrainruiz/pr-vi-history/.github/workflows/vi-history-linux-compare.yml@main
+    with:
+      base_vi: fixtures/vi/VI1.base.vi
+      head_vi: fixtures/vi/VI1.head.vi
+      linux_image: nationalinstruments/labview:2026q1-linux
+      report_path: tests/results/vi-history-linux/compare-report.html
+      timeout_seconds: '600'
+      upload_artifact: true
+```
+
+Exposed outputs:
+
+- `report_path`, `capture_path`, `stdout_path`, `stderr_path`
+- `compare_status`, `result_class`, `is_diff`, `lane_status`
+- `diff_detail_count`, `diff_image_count`
 
 ## Notes
 
