@@ -230,11 +230,36 @@ resolve_cli_path() {
   return 1
 }
 
+resolve_labview_path() {
+  if [[ -n "${COMPARE_LABVIEW_PATH_ARG:-}" ]] && [[ -x "${COMPARE_LABVIEW_PATH_ARG}" ]]; then
+    printf '%s' "${COMPARE_LABVIEW_PATH_ARG}"
+    return 0
+  fi
+
+  local candidates=(
+    "/usr/local/natinst/LabVIEW-2026Q1-64/labview"
+    "/usr/local/natinst/LabVIEW-2026Q1-64/LabVIEW"
+    "/usr/local/natinst/LabVIEW-2025-64/labview"
+    "/usr/local/natinst/LabVIEW-2025-64/LabVIEW"
+  )
+  local candidate
+  for candidate in "${candidates[@]}"; do
+    if [[ -x "${candidate}" ]]; then
+      printf '%s' "${candidate}"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
 cli_path="$(resolve_cli_path || true)"
 if [[ -z "${cli_path}" ]]; then
   echo "LabVIEW CLI executable not found in container." >&2
   exit 2
 fi
+
+labview_path="$(resolve_labview_path || true)"
 
 xvfb_pid=""
 if [[ -z "${DISPLAY:-}" ]]; then
@@ -262,8 +287,8 @@ declare -a args=(
   "-ReportType" "${COMPARE_REPORT_TYPE}"
 )
 
-if [[ -n "${COMPARE_LABVIEW_PATH_ARG:-}" ]]; then
-  args+=("-LabVIEWPath" "${COMPARE_LABVIEW_PATH_ARG}")
+if [[ -n "${labview_path:-}" ]]; then
+  args+=("-LabVIEWPath" "${labview_path}")
 fi
 
 if [[ -n "${COMPARE_FLAGS_B64:-}" ]]; then
