@@ -239,6 +239,8 @@ resolve_labview_path() {
   local candidates=(
     "/usr/local/natinst/LabVIEW-2026Q1-64/labview"
     "/usr/local/natinst/LabVIEW-2026Q1-64/LabVIEW"
+    "/usr/local/natinst/LabVIEW-2026-64/labview"
+    "/usr/local/natinst/LabVIEW-2026-64/LabVIEW"
     "/usr/local/natinst/LabVIEW-2025-64/labview"
     "/usr/local/natinst/LabVIEW-2025-64/LabVIEW"
   )
@@ -273,14 +275,38 @@ resolve_labview_path() {
   fi
 
   local discovered_dir
-  discovered_dir="$(find /usr/local/natinst -maxdepth 3 -type d -name 'LabVIEW-2026*' 2>/dev/null | head -n 1 || true)"
+  discovered_dir="$(find /usr/local/natinst -maxdepth 3 -type d -name 'LabVIEW-2026Q*-64' 2>/dev/null | sort | tail -n 1 || true)"
   if [[ -n "${discovered_dir}" ]]; then
+    for candidate in "${discovered_dir}/labview" "${discovered_dir}/LabVIEW"; do
+      if [[ -f "${candidate}" ]]; then
+        printf '%s' "${candidate}"
+        return 0
+      fi
+    done
+    printf '%s' "${discovered_dir}"
+    return 0
+  fi
+
+  discovered_dir="$(find /usr/local/natinst -maxdepth 3 -type d -name 'LabVIEW-2026*-64' 2>/dev/null | sort | tail -n 1 || true)"
+  if [[ -n "${discovered_dir}" ]]; then
+    for candidate in "${discovered_dir}/labview" "${discovered_dir}/LabVIEW"; do
+      if [[ -f "${candidate}" ]]; then
+        printf '%s' "${candidate}"
+        return 0
+      fi
+    done
     printf '%s' "${discovered_dir}"
     return 0
   fi
 
   discovered_dir="$(find /usr/local/natinst -maxdepth 3 -type d -name 'LabVIEW-*' 2>/dev/null | head -n 1 || true)"
   if [[ -n "${discovered_dir}" ]]; then
+    for candidate in "${discovered_dir}/labview" "${discovered_dir}/LabVIEW"; do
+      if [[ -f "${candidate}" ]]; then
+        printf '%s' "${candidate}"
+        return 0
+      fi
+    done
     printf '%s' "${discovered_dir}"
     return 0
   fi
