@@ -286,8 +286,8 @@ jobs:
           Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value ("- Status: **{0}**" -f $compareStatus)
           Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value ("- Result class: **{0}**" -f $resultClass)
           Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value ("- Diff detected: **{0}**" -f $isDiff)
-          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value ("- Report: `{0}`" -f $reportPath)
-          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value ("- Capture: `{0}`" -f $capturePath)
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value ('- Report: `{0}`' -f $reportPath)
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value ('- Capture: `{0}`' -f $capturePath)
 
       - name: Upload Linux compare artifacts
         if: ${{ always() && (inputs.upload_artifact == true || inputs.upload_artifact == 'true') }}
