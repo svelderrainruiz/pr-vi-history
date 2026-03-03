@@ -33,7 +33,7 @@ on:
       timeout_seconds:
         description: Compare timeout in seconds
         required: false
-        default: '600'
+        default: '420'
         type: string
       upload_artifact:
         description: Upload compare artifacts
@@ -83,7 +83,7 @@ on:
       timeout_seconds:
         description: Compare timeout in seconds
         required: false
-        default: '600'
+        default: '420'
         type: string
       upload_artifact:
         description: Upload compare artifacts
@@ -144,7 +144,7 @@ jobs:
   linux_compare:
     name: Hosted Linux VI compare
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     outputs:
       report_path: ${{ steps.collect.outputs.report_path }}
       capture_path: ${{ steps.collect.outputs.capture_path }}
@@ -197,7 +197,7 @@ jobs:
 
       - name: Pull NI Linux image
         shell: bash
-        run: docker pull "${{ inputs.linux_image }}"
+        run: timeout 300s docker pull "${{ inputs.linux_image }}"
 
       - name: Run Linux container compare
         id: compare
