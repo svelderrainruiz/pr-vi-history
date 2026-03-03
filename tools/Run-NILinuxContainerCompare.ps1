@@ -79,6 +79,20 @@ function Assert-Tool {
   }
 }
 
+function Get-TempRoot {
+  $candidate = [string]$env:TEMP
+  if ([string]::IsNullOrWhiteSpace($candidate)) {
+    $candidate = [string]$env:TMPDIR
+  }
+  if ([string]::IsNullOrWhiteSpace($candidate)) {
+    $candidate = [System.IO.Path]::GetTempPath()
+  }
+  if ([string]::IsNullOrWhiteSpace($candidate)) {
+    throw 'Unable to resolve a temporary directory path.'
+  }
+  return [System.IO.Path]::GetFullPath($candidate)
+}
+
 function Resolve-ExistingFilePath {
   param(
     [Parameter(Mandatory)][string]$InputPath,
@@ -264,9 +278,10 @@ function Invoke-DockerRunWithTimeout {
     [Parameter(Mandatory)][string]$ContainerName
   )
 
-  $stdoutFile = Join-Path $env:TEMP ("ni-linux-container-stdout-{0}.log" -f ([guid]::NewGuid().ToString('N')))
-  $stderrFile = Join-Path $env:TEMP ("ni-linux-container-stderr-{0}.log" -f ([guid]::NewGuid().ToString('N')))
-  $dockerArgsFile = Join-Path $env:TEMP ("ni-linux-container-docker-args-{0}.json" -f ([guid]::NewGuid().ToString('N')))
+  $tempRoot = Get-TempRoot
+  $stdoutFile = Join-Path $tempRoot ("ni-linux-container-stdout-{0}.log" -f ([guid]::NewGuid().ToString('N')))
+  $stderrFile = Join-Path $tempRoot ("ni-linux-container-stderr-{0}.log" -f ([guid]::NewGuid().ToString('N')))
+  $dockerArgsFile = Join-Path $tempRoot ("ni-linux-container-docker-args-{0}.json" -f ([guid]::NewGuid().ToString('N')))
   $process = $null
   try {
     $pwshPath = (Get-Command -Name 'pwsh' -ErrorAction SilentlyContinue | Select-Object -First 1).Source
@@ -468,7 +483,7 @@ try {
     $containerHeadVi = Convert-HostFileToContainerPath -HostFilePath $headViPath -MountMap $mounts -MountIndex $mountRef
     $containerReportPath = Convert-HostFileToContainerPath -HostFilePath $resolvedReportPath -MountMap $mounts -MountIndex $mountRef
 
-    $scriptTempDir = Join-Path $env:TEMP ("ni-linux-container-script-{0}" -f ([guid]::NewGuid().ToString('N')))
+    $scriptTempDir = Join-Path (Get-TempRoot) ("ni-linux-container-script-{0}" -f ([guid]::NewGuid().ToString('N')))
     New-Item -ItemType Directory -Path $scriptTempDir -Force | Out-Null
     $hostContainerScriptPath = Join-Path $scriptTempDir 'run-compare.sh'
     New-ContainerScript | Set-Content -LiteralPath $hostContainerScriptPath -Encoding utf8
