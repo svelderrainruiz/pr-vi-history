@@ -231,6 +231,21 @@ resolve_cli_path() {
 }
 
 resolve_labview_path() {
+  if [[ -n "${cli_path:-}" ]]; then
+    local cli_dir
+    cli_dir="$(dirname "${cli_path}")"
+    for candidate in "${cli_dir}/labview" "${cli_dir}/LabVIEW"; do
+      if [[ -f "${candidate}" ]]; then
+        printf '%s' "${candidate}"
+        return 0
+      fi
+    done
+    if [[ "${cli_dir}" == *"/LabVIEW-"* ]] && [[ -d "${cli_dir}" ]]; then
+      printf '%s' "${cli_dir}"
+      return 0
+    fi
+  fi
+
   if [[ -n "${COMPARE_LABVIEW_PATH_ARG:-}" ]] && [[ -e "${COMPARE_LABVIEW_PATH_ARG}" ]]; then
     printf '%s' "${COMPARE_LABVIEW_PATH_ARG}"
     return 0
@@ -251,21 +266,6 @@ resolve_labview_path() {
       return 0
     fi
   done
-
-  if [[ -n "${cli_path:-}" ]]; then
-    local cli_dir
-    cli_dir="$(dirname "${cli_path}")"
-    for candidate in "${cli_dir}/labview" "${cli_dir}/LabVIEW"; do
-      if [[ -f "${candidate}" ]]; then
-        printf '%s' "${candidate}"
-        return 0
-      fi
-    done
-    if [[ "${cli_dir}" == *"/LabVIEW-"* ]] && [[ -d "${cli_dir}" ]]; then
-      printf '%s' "${cli_dir}"
-      return 0
-    fi
-  fi
 
   local discovered
   discovered="$(find /usr/local/natinst -maxdepth 5 -type f \( -iname 'labview' -o -iname 'LabVIEW' \) 2>/dev/null | head -n 1 || true)"
@@ -325,6 +325,39 @@ if [[ -z "${labview_path}" ]]; then
   echo "LabVIEW executable path could not be auto-resolved in container." >&2
   exit 2
 fi
+
+if [[ -d "${labview_path}" ]]; then
+  labview_root="${labview_path}"
+else
+  labview_root="$(dirname "${labview_path}")"
+fi
+cli_root="$(dirname "${cli_path}")"
+
+declare -a ld_entries=()
+for candidate in "${labview_root}" "${cli_root}" "/usr/local/natinst/LabVIEW-2026Q1-64" "/usr/local/natinst/LabVIEW-2026-64"; do
+  if [[ -d "${candidate}" ]]; then
+    ld_entries+=("${candidate}")
+  fi
+done
+
+dotnet_lib_path="$(find /usr/local/natinst -maxdepth 8 -type f -name 'libniDotNETCoreInterop.so' 2>/dev/null | head -n 1 || true)"
+if [[ -n "${dotnet_lib_path}" ]]; then
+  dotnet_lib_dir="$(dirname "${dotnet_lib_path}")"
+  if [[ -d "${dotnet_lib_dir}" ]]; then
+    ld_entries+=("${dotnet_lib_dir}")
+  fi
+fi
+
+if [[ ${#ld_entries[@]} -gt 0 ]]; then
+  ld_joined="$(printf "%s\n" "${ld_entries[@]}" | awk 'NF && !seen[$0]++' | paste -sd: -)"
+  if [[ -n "${LD_LIBRARY_PATH:-}" ]]; then
+    export LD_LIBRARY_PATH="${ld_joined}:${LD_LIBRARY_PATH}"
+  else
+    export LD_LIBRARY_PATH="${ld_joined}"
+  fi
+fi
+
+echo "[ni-linux-container-meta]cliPath=${cli_path};labviewPath=${labview_path};dotnetLib=${dotnet_lib_path:-<none>}"
 
 xvfb_pid=""
 if [[ -z "${DISPLAY:-}" ]]; then
