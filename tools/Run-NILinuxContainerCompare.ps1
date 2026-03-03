@@ -376,34 +376,64 @@ cleanup() {
 }
 trap cleanup EXIT
 
-declare -a args=(
-  "-OperationName" "CreateComparisonReport"
-  # Linux containers require explicit headless CLI mode for automation.
-  "-Headless"
-  "-VI1" "${COMPARE_BASE_VI}"
-  "-VI2" "${COMPARE_HEAD_VI}"
-  "-ReportPath" "${COMPARE_REPORT_PATH}"
-  "-ReportType" "${COMPARE_REPORT_TYPE}"
-)
+run_compare() {
+  local include_headless="$1"
+  local -a cli_args=(
+    "-OperationName" "CreateComparisonReport"
+  )
+  if [[ "${include_headless}" == "1" ]]; then
+    cli_args+=("-Headless")
+  fi
+  cli_args+=(
+    "-VI1" "${COMPARE_BASE_VI}"
+    "-VI2" "${COMPARE_HEAD_VI}"
+    "-ReportPath" "${COMPARE_REPORT_PATH}"
+    "-ReportType" "${COMPARE_REPORT_TYPE}"
+  )
 
-if [[ -n "${labview_path:-}" ]]; then
-  echo "[ni-linux-container] LabVIEWPath=${labview_path}"
-  args+=("-LabVIEWPath" "${labview_path}")
+  if [[ -n "${labview_path:-}" ]]; then
+    cli_args+=("-LabVIEWPath" "${labview_path}")
+  fi
+
+  if [[ -n "${COMPARE_FLAGS_B64:-}" ]]; then
+    decoded_flags="$(printf '%s' "${COMPARE_FLAGS_B64}" | base64 --decode 2>/dev/null || true)"
+    if [[ -n "${decoded_flags}" ]]; then
+      while IFS= read -r flag; do
+        if [[ -n "${flag}" ]]; then
+          cli_args+=("${flag}")
+        fi
+      done <<< "${decoded_flags}"
+    fi
+  fi
+
+  set +e
+  cli_last_output="$("${cli_path}" "${cli_args[@]}" 2>&1)"
+  cli_last_exit=$?
+  set -e
+
+  if [[ -n "${cli_last_output:-}" ]]; then
+    printf '%s\n' "${cli_last_output}"
+  fi
+  return "${cli_last_exit}"
+}
+
+echo "[ni-linux-container] LabVIEWPath=${labview_path}"
+cli_last_output=""
+cli_last_exit=0
+headless_mode="with-headless"
+if run_compare 1; then
+  exit 0
 fi
 
-if [[ -n "${COMPARE_FLAGS_B64:-}" ]]; then
-  decoded_flags="$(printf '%s' "${COMPARE_FLAGS_B64}" | base64 --decode 2>/dev/null || true)"
-  if [[ -n "${decoded_flags}" ]]; then
-    while IFS= read -r flag; do
-      if [[ -n "${flag}" ]]; then
-        args+=("${flag}")
-      fi
-    done <<< "${decoded_flags}"
+if [[ "${cli_last_output}" == *"illegal arguments"* ]] || [[ "${cli_last_output}" == *"0xFFFAA89D"* ]]; then
+  headless_mode="fallback-without-headless"
+  echo "[ni-linux-container-meta]headlessRetry=${headless_mode}"
+  if run_compare 0; then
+    exit 0
   fi
 fi
 
-"${cli_path}" "${args[@]}"
-exit $?
+exit "${cli_last_exit}"
 '@
 }
 
