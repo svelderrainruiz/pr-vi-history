@@ -236,8 +236,26 @@ if [[ -z "${cli_path}" ]]; then
   exit 2
 fi
 
+xvfb_pid=""
+if [[ -z "${DISPLAY:-}" ]]; then
+  if command -v Xvfb >/dev/null 2>&1; then
+    export DISPLAY=:99
+    Xvfb "${DISPLAY}" -screen 0 1280x1024x24 >/tmp/ni-xvfb.log 2>&1 &
+    xvfb_pid="$!"
+    sleep 2
+  fi
+fi
+
+cleanup() {
+  if [[ -n "${xvfb_pid}" ]]; then
+    kill "${xvfb_pid}" >/dev/null 2>&1 || true
+  fi
+}
+trap cleanup EXIT
+
 declare -a args=(
   "-OperationName" "CreateComparisonReport"
+  "-Headless"
   "-VI1" "${COMPARE_BASE_VI}"
   "-VI2" "${COMPARE_HEAD_VI}"
   "-ReportPath" "${COMPARE_REPORT_PATH}"
@@ -374,7 +392,8 @@ function Test-LabVIEWCliFailure {
   return (
     $combined -match 'Error code\s*:' -or
     $combined -match 'An error occurred while running the LabVIEW CLI' -or
-    $combined -match 'LabVIEW CLI executable not found'
+    $combined -match 'LabVIEW CLI executable not found' -or
+    $combined -match 'Unable to open X display'
   )
 }
 
@@ -507,6 +526,7 @@ try {
     $dockerArgs += @('--env', ("COMPARE_REPORT_PATH={0}" -f $containerReportPath))
     $dockerArgs += @('--env', ("COMPARE_REPORT_TYPE={0}" -f $reportInfo.CliReportType))
     $dockerArgs += @('--env', ("COMPARE_FLAGS_B64={0}" -f $flagsB64))
+    $dockerArgs += @('--env', 'LV_RTE_HEADLESS=1')
     if (-not [string]::IsNullOrWhiteSpace($LabVIEWPath)) {
       $dockerArgs += @('--env', ("COMPARE_LABVIEW_PATH_ARG={0}" -f $LabVIEWPath))
     }
