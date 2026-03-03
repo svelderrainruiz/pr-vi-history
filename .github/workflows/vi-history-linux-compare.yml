@@ -1,0 +1,312 @@
+name: VI History Linux Compare
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_vi:
+        description: Base VI path in repository
+        required: true
+        type: string
+      head_vi:
+        description: Head VI path in repository
+        required: true
+        type: string
+      report_path:
+        description: Output report path
+        required: false
+        default: tests/results/vi-history-linux/compare-report.html
+        type: string
+      report_type:
+        description: Compare report type (html/xml/text)
+        required: false
+        default: html
+        type: choice
+        options:
+          - html
+          - xml
+          - text
+      linux_image:
+        description: NI Linux LabVIEW image
+        required: false
+        default: nationalinstruments/labview:2026q1-linux
+        type: string
+      timeout_seconds:
+        description: Compare timeout in seconds
+        required: false
+        default: '600'
+        type: string
+      upload_artifact:
+        description: Upload compare artifacts
+        required: false
+        default: true
+        type: boolean
+      artifact_name:
+        description: Artifact name
+        required: false
+        default: vi-history-linux-compare
+        type: string
+  workflow_call:
+    inputs:
+      base_vi:
+        description: Base VI path in repository
+        required: true
+        type: string
+      head_vi:
+        description: Head VI path in repository
+        required: true
+        type: string
+      report_path:
+        description: Output report path
+        required: false
+        default: tests/results/vi-history-linux/compare-report.html
+        type: string
+      report_type:
+        description: Compare report type (html/xml/text)
+        required: false
+        default: html
+        type: string
+      linux_image:
+        description: NI Linux LabVIEW image
+        required: false
+        default: nationalinstruments/labview:2026q1-linux
+        type: string
+      timeout_seconds:
+        description: Compare timeout in seconds
+        required: false
+        default: '600'
+        type: string
+      upload_artifact:
+        description: Upload compare artifacts
+        required: false
+        default: true
+        type: boolean
+      artifact_name:
+        description: Artifact name
+        required: false
+        default: vi-history-linux-compare
+        type: string
+    outputs:
+      report_path:
+        description: Absolute report path on runner
+        value: ${{ jobs.linux_compare.outputs.report_path }}
+      capture_path:
+        description: Absolute capture JSON path on runner
+        value: ${{ jobs.linux_compare.outputs.capture_path }}
+      stdout_path:
+        description: Compare stdout log path
+        value: ${{ jobs.linux_compare.outputs.stdout_path }}
+      stderr_path:
+        description: Compare stderr log path
+        value: ${{ jobs.linux_compare.outputs.stderr_path }}
+      compare_status:
+        description: ok|diff|timeout|error|preflight-error
+        value: ${{ jobs.linux_compare.outputs.compare_status }}
+      result_class:
+        description: success-no-diff|success-diff|failure-tool|failure-timeout|failure-preflight
+        value: ${{ jobs.linux_compare.outputs.result_class }}
+      is_diff:
+        description: true when compare outcome is diff
+        value: ${{ jobs.linux_compare.outputs.is_diff }}
+      lane_status:
+        description: success|failure
+        value: ${{ jobs.linux_compare.outputs.lane_status }}
+      diff_detail_count:
+        description: Parsed diff-detail marker count from HTML report when available
+        value: ${{ jobs.linux_compare.outputs.diff_detail_count }}
+      diff_image_count:
+        description: Parsed diff image marker count from HTML report when available
+        value: ${{ jobs.linux_compare.outputs.diff_image_count }}
+
+permissions:
+  contents: read
+
+jobs:
+  linux_compare:
+    name: Hosted Linux VI compare
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      report_path: ${{ steps.collect.outputs.report_path }}
+      capture_path: ${{ steps.collect.outputs.capture_path }}
+      stdout_path: ${{ steps.collect.outputs.stdout_path }}
+      stderr_path: ${{ steps.collect.outputs.stderr_path }}
+      compare_status: ${{ steps.collect.outputs.compare_status }}
+      result_class: ${{ steps.collect.outputs.result_class }}
+      is_diff: ${{ steps.collect.outputs.is_diff }}
+      lane_status: ${{ steps.collect.outputs.lane_status }}
+      diff_detail_count: ${{ steps.collect.outputs.diff_detail_count }}
+      diff_image_count: ${{ steps.collect.outputs.diff_image_count }}
+    steps:
+      - name: Checkout workflow repository
+        uses: actions/checkout@v5
+
+      - name: Resolve compare paths
+        id: paths
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $workspace = $env:GITHUB_WORKSPACE
+          $reportInput = '${{ inputs.report_path }}'
+          if ([string]::IsNullOrWhiteSpace($reportInput)) {
+            throw 'report_path input is required.'
+          }
+          $reportPath = if ([System.IO.Path]::IsPathRooted($reportInput)) {
+            [System.IO.Path]::GetFullPath($reportInput)
+          } else {
+            [System.IO.Path]::GetFullPath((Join-Path $workspace $reportInput))
+          }
+          $reportDir = Split-Path -Parent $reportPath
+          if (-not (Test-Path -LiteralPath $reportDir -PathType Container)) {
+            New-Item -ItemType Directory -Path $reportDir -Force | Out-Null
+          }
+          $capturePath = Join-Path $reportDir 'ni-linux-container-capture.json'
+          $stdoutPath = Join-Path $reportDir 'ni-linux-container-stdout.txt'
+          $stderrPath = Join-Path $reportDir 'ni-linux-container-stderr.txt'
+          "report_path=$reportPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "capture_path=$capturePath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "stdout_path=$stdoutPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "stderr_path=$stderrPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Pull NI Linux image
+        shell: bash
+        run: docker pull "${{ inputs.linux_image }}"
+
+      - name: Run Linux container compare
+        id: compare
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Continue'
+          $toolPath = Join-Path $env:GITHUB_WORKSPACE 'tools' 'Run-NILinuxContainerCompare.ps1'
+          if (-not (Test-Path -LiteralPath $toolPath -PathType Leaf)) {
+            throw ("Missing compare tool: {0}" -f $toolPath)
+          }
+          & pwsh -NoLogo -NoProfile -File $toolPath `
+            -BaseVi '${{ inputs.base_vi }}' `
+            -HeadVi '${{ inputs.head_vi }}' `
+            -Image '${{ inputs.linux_image }}' `
+            -ReportPath '${{ inputs.report_path }}' `
+            -ReportType '${{ inputs.report_type }}' `
+            -TimeoutSeconds '${{ inputs.timeout_seconds }}'
+          $exitCode = $LASTEXITCODE
+          "exit_code=$exitCode" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Collect compare outputs
+        id: collect
+        if: ${{ always() }}
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+
+          $capturePath = '${{ steps.paths.outputs.capture_path }}'
+          $reportPath = '${{ steps.paths.outputs.report_path }}'
+          $stdoutPath = '${{ steps.paths.outputs.stdout_path }}'
+          $stderrPath = '${{ steps.paths.outputs.stderr_path }}'
+          $stepExitCode = 0
+          [void][int]::TryParse('${{ steps.compare.outputs.exit_code }}', [ref]$stepExitCode)
+
+          $compareStatus = 'preflight-error'
+          $resultClass = 'failure-preflight'
+          $isDiff = $false
+          $laneStatus = 'failure'
+          $diffDetailCount = 0
+          $diffImageCount = 0
+
+          if (Test-Path -LiteralPath $capturePath -PathType Leaf) {
+            $capture = Get-Content -LiteralPath $capturePath -Raw | ConvertFrom-Json
+            if ($capture.reportPath) { $reportPath = [string]$capture.reportPath }
+            if ($capture.stdoutPath) { $stdoutPath = [string]$capture.stdoutPath }
+            if ($capture.stderrPath) { $stderrPath = [string]$capture.stderrPath }
+            $compareStatus = ([string]$capture.status).Trim().ToLowerInvariant()
+            switch ($compareStatus) {
+              'ok' {
+                $resultClass = 'success-no-diff'
+                $isDiff = $false
+                $laneStatus = 'success'
+              }
+              'diff' {
+                $resultClass = 'success-diff'
+                $isDiff = $true
+                $laneStatus = 'success'
+              }
+              'timeout' {
+                $resultClass = 'failure-timeout'
+                $isDiff = $false
+                $laneStatus = 'failure'
+              }
+              'preflight-error' {
+                $resultClass = 'failure-preflight'
+                $isDiff = $false
+                $laneStatus = 'failure'
+              }
+              default {
+                $resultClass = 'failure-tool'
+                $isDiff = $false
+                $laneStatus = 'failure'
+              }
+            }
+          } else {
+            if ($stepExitCode -eq 0) {
+              $resultClass = 'failure-preflight'
+              $compareStatus = 'preflight-error'
+              $laneStatus = 'failure'
+            } elseif ($stepExitCode -eq 124) {
+              $resultClass = 'failure-timeout'
+              $compareStatus = 'timeout'
+              $laneStatus = 'failure'
+            } else {
+              $resultClass = 'failure-tool'
+              $compareStatus = 'error'
+              $laneStatus = 'failure'
+            }
+          }
+
+          if (Test-Path -LiteralPath $reportPath -PathType Leaf -and "${{ inputs.report_type }}".ToLowerInvariant() -eq 'html') {
+            $html = Get-Content -LiteralPath $reportPath -Raw
+            $diffDetailCount = [regex]::Matches($html, 'li\.diff-detail(?:-cosmetic)?', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase).Count
+            $diffImageCount = [regex]::Matches($html, '<img[^>]+difference-image', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase).Count
+          }
+
+          "report_path=$reportPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "capture_path=$capturePath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "stdout_path=$stdoutPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "stderr_path=$stderrPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "compare_status=$compareStatus" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "result_class=$resultClass" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "is_diff=$([string]$isDiff.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "lane_status=$laneStatus" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "diff_detail_count=$diffDetailCount" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "diff_image_count=$diffImageCount" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value '### Hosted Linux compare result'
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value ''
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value ("- Status: **{0}**" -f $compareStatus)
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value ("- Result class: **{0}**" -f $resultClass)
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value ("- Diff detected: **{0}**" -f $isDiff)
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value ("- Report: `{0}`" -f $reportPath)
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value ("- Capture: `{0}`" -f $capturePath)
+
+      - name: Upload Linux compare artifacts
+        if: ${{ always() && (inputs.upload_artifact == true || inputs.upload_artifact == 'true') }}
+        uses: actions/upload-artifact@v5
+        with:
+          name: ${{ inputs.artifact_name }}
+          if-no-files-found: warn
+          path: |
+            ${{ steps.collect.outputs.report_path }}
+            ${{ steps.collect.outputs.capture_path }}
+            ${{ steps.collect.outputs.stdout_path }}
+            ${{ steps.collect.outputs.stderr_path }}
+
+      - name: Enforce lane gate
+        if: ${{ always() }}
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          if ('${{ steps.collect.outputs.lane_status }}' -ne 'success') {
+            throw ("Hosted linux compare failed: status={0}, class={1}, capture={2}" -f '${{ steps.collect.outputs.compare_status }}', '${{ steps.collect.outputs.result_class }}', '${{ steps.collect.outputs.capture_path }}')
+          }
