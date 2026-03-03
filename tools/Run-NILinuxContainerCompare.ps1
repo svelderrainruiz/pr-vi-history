@@ -231,6 +231,21 @@ resolve_cli_path() {
 }
 
 resolve_labview_path() {
+  if [[ -n "${cli_path:-}" ]]; then
+    local cli_dir
+    cli_dir="$(dirname "${cli_path}")"
+    for candidate in "${cli_dir}/labview" "${cli_dir}/LabVIEW"; do
+      if [[ -f "${candidate}" ]]; then
+        printf '%s' "${candidate}"
+        return 0
+      fi
+    done
+    if [[ "${cli_dir}" == *"/LabVIEW-"* ]] && [[ -d "${cli_dir}" ]]; then
+      printf '%s' "${cli_dir}"
+      return 0
+    fi
+  fi
+
   if [[ -n "${COMPARE_LABVIEW_PATH_ARG:-}" ]] && [[ -e "${COMPARE_LABVIEW_PATH_ARG}" ]]; then
     printf '%s' "${COMPARE_LABVIEW_PATH_ARG}"
     return 0
@@ -251,21 +266,6 @@ resolve_labview_path() {
       return 0
     fi
   done
-
-  if [[ -n "${cli_path:-}" ]]; then
-    local cli_dir
-    cli_dir="$(dirname "${cli_path}")"
-    for candidate in "${cli_dir}/labview" "${cli_dir}/LabVIEW"; do
-      if [[ -f "${candidate}" ]]; then
-        printf '%s' "${candidate}"
-        return 0
-      fi
-    done
-    if [[ "${cli_dir}" == *"/LabVIEW-"* ]] && [[ -d "${cli_dir}" ]]; then
-      printf '%s' "${cli_dir}"
-      return 0
-    fi
-  fi
 
   local discovered
   discovered="$(find /usr/local/natinst -maxdepth 5 -type f \( -iname 'labview' -o -iname 'LabVIEW' \) 2>/dev/null | head -n 1 || true)"
@@ -326,6 +326,39 @@ if [[ -z "${labview_path}" ]]; then
   exit 2
 fi
 
+if [[ -d "${labview_path}" ]]; then
+  labview_root="${labview_path}"
+else
+  labview_root="$(dirname "${labview_path}")"
+fi
+cli_root="$(dirname "${cli_path}")"
+
+declare -a ld_entries=()
+for candidate in "${labview_root}" "${cli_root}" "/usr/local/natinst/LabVIEW-2026Q1-64" "/usr/local/natinst/LabVIEW-2026-64"; do
+  if [[ -d "${candidate}" ]]; then
+    ld_entries+=("${candidate}")
+  fi
+done
+
+dotnet_lib_path="$(find /usr/local/natinst -maxdepth 8 -type f -name 'libniDotNETCoreInterop.so' 2>/dev/null | head -n 1 || true)"
+if [[ -n "${dotnet_lib_path}" ]]; then
+  dotnet_lib_dir="$(dirname "${dotnet_lib_path}")"
+  if [[ -d "${dotnet_lib_dir}" ]]; then
+    ld_entries+=("${dotnet_lib_dir}")
+  fi
+fi
+
+if [[ ${#ld_entries[@]} -gt 0 ]]; then
+  ld_joined="$(printf "%s\n" "${ld_entries[@]}" | awk 'NF && !seen[$0]++' | paste -sd: -)"
+  if [[ -n "${LD_LIBRARY_PATH:-}" ]]; then
+    export LD_LIBRARY_PATH="${ld_joined}:${LD_LIBRARY_PATH}"
+  else
+    export LD_LIBRARY_PATH="${ld_joined}"
+  fi
+fi
+
+echo "[ni-linux-container-meta]cliPath=${cli_path};labviewPath=${labview_path};dotnetLib=${dotnet_lib_path:-<none>}"
+
 xvfb_pid=""
 if [[ -z "${DISPLAY:-}" ]]; then
   if command -v Xvfb >/dev/null 2>&1; then
@@ -343,32 +376,64 @@ cleanup() {
 }
 trap cleanup EXIT
 
-declare -a args=(
-  "-OperationName" "CreateComparisonReport"
-  "-VI1" "${COMPARE_BASE_VI}"
-  "-VI2" "${COMPARE_HEAD_VI}"
-  "-ReportPath" "${COMPARE_REPORT_PATH}"
-  "-ReportType" "${COMPARE_REPORT_TYPE}"
-)
+run_compare() {
+  local include_headless="$1"
+  local -a cli_args=(
+    "-OperationName" "CreateComparisonReport"
+  )
+  if [[ "${include_headless}" == "1" ]]; then
+    cli_args+=("-Headless")
+  fi
+  cli_args+=(
+    "-VI1" "${COMPARE_BASE_VI}"
+    "-VI2" "${COMPARE_HEAD_VI}"
+    "-ReportPath" "${COMPARE_REPORT_PATH}"
+    "-ReportType" "${COMPARE_REPORT_TYPE}"
+  )
 
-if [[ -n "${labview_path:-}" ]]; then
-  echo "[ni-linux-container] LabVIEWPath=${labview_path}"
-  args+=("-LabVIEWPath" "${labview_path}")
+  if [[ -n "${labview_path:-}" ]]; then
+    cli_args+=("-LabVIEWPath" "${labview_path}")
+  fi
+
+  if [[ -n "${COMPARE_FLAGS_B64:-}" ]]; then
+    decoded_flags="$(printf '%s' "${COMPARE_FLAGS_B64}" | base64 --decode 2>/dev/null || true)"
+    if [[ -n "${decoded_flags}" ]]; then
+      while IFS= read -r flag; do
+        if [[ -n "${flag}" ]]; then
+          cli_args+=("${flag}")
+        fi
+      done <<< "${decoded_flags}"
+    fi
+  fi
+
+  set +e
+  cli_last_output="$("${cli_path}" "${cli_args[@]}" 2>&1)"
+  cli_last_exit=$?
+  set -e
+
+  if [[ -n "${cli_last_output:-}" ]]; then
+    printf '%s\n' "${cli_last_output}"
+  fi
+  return "${cli_last_exit}"
+}
+
+echo "[ni-linux-container] LabVIEWPath=${labview_path}"
+cli_last_output=""
+cli_last_exit=0
+headless_mode="with-headless"
+if run_compare 1; then
+  exit 0
 fi
 
-if [[ -n "${COMPARE_FLAGS_B64:-}" ]]; then
-  decoded_flags="$(printf '%s' "${COMPARE_FLAGS_B64}" | base64 --decode 2>/dev/null || true)"
-  if [[ -n "${decoded_flags}" ]]; then
-    while IFS= read -r flag; do
-      if [[ -n "${flag}" ]]; then
-        args+=("${flag}")
-      fi
-    done <<< "${decoded_flags}"
+if [[ "${cli_last_output}" == *"illegal arguments"* ]] || [[ "${cli_last_output}" == *"0xFFFAA89D"* ]]; then
+  headless_mode="fallback-without-headless"
+  echo "[ni-linux-container-meta]headlessRetry=${headless_mode}"
+  if run_compare 0; then
+    exit 0
   fi
 fi
 
-"${cli_path}" "${args[@]}"
-exit $?
+exit "${cli_last_exit}"
 '@
 }
 
