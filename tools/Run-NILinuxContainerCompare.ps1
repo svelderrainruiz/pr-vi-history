@@ -118,21 +118,21 @@ function Resolve-ReportTypeInfo {
     'html' {
       return [pscustomobject]@{
         InputType     = 'html'
-        CliReportType = 'HTMLSingleFile'
+        CliReportType = 'html'
         Extension     = 'html'
       }
     }
     'xml' {
       return [pscustomobject]@{
         InputType     = 'xml'
-        CliReportType = 'XML'
+        CliReportType = 'xml'
         Extension     = 'xml'
       }
     }
     'text' {
       return [pscustomobject]@{
         InputType     = 'text'
-        CliReportType = 'Text'
+        CliReportType = 'text'
         Extension     = 'txt'
       }
     }
