@@ -345,6 +345,8 @@ trap cleanup EXIT
 
 declare -a args=(
   "-OperationName" "CreateComparisonReport"
+  # Linux containers require explicit headless CLI mode for automation.
+  "-Headless"
   "-VI1" "${COMPARE_BASE_VI}"
   "-VI2" "${COMPARE_HEAD_VI}"
   "-ReportPath" "${COMPARE_REPORT_PATH}"
