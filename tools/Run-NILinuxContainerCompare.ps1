@@ -345,7 +345,6 @@ trap cleanup EXIT
 
 declare -a args=(
   "-OperationName" "CreateComparisonReport"
-  "-Headless"
   "-VI1" "${COMPARE_BASE_VI}"
   "-VI2" "${COMPARE_HEAD_VI}"
   "-ReportPath" "${COMPARE_REPORT_PATH}"
