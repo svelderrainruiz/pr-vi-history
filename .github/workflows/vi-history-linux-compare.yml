@@ -45,6 +45,16 @@ on:
         required: false
         default: vi-history-linux-compare
         type: string
+      tools_repository:
+        description: Repository hosting reusable compare tools
+        required: false
+        default: svelderrainruiz/pr-vi-history
+        type: string
+      tools_ref:
+        description: Ref (branch/tag/SHA) for reusable compare tools
+        required: false
+        default: main
+        type: string
   workflow_call:
     inputs:
       base_vi:
@@ -84,6 +94,16 @@ on:
         description: Artifact name
         required: false
         default: vi-history-linux-compare
+        type: string
+      tools_repository:
+        description: Repository hosting reusable compare tools
+        required: false
+        default: svelderrainruiz/pr-vi-history
+        type: string
+      tools_ref:
+        description: Ref (branch/tag/SHA) for reusable compare tools
+        required: false
+        default: main
         type: string
     outputs:
       report_path:
@@ -140,24 +160,11 @@ jobs:
       - name: Checkout workflow repository
         uses: actions/checkout@v5
 
-      - name: Resolve reusable workflow source
-        id: workflow_source
-        shell: pwsh
-        run: |
-          Set-StrictMode -Version Latest
-          $ErrorActionPreference = 'Stop'
-          $workflowRef = '${{ github.workflow_ref }}'
-          if ($workflowRef -notmatch '^(?<repo>.+?)/\.github/workflows/[^@]+@(?<ref>.+)$') {
-            throw ("Unable to parse github.workflow_ref: {0}" -f $workflowRef)
-          }
-          "repo=$($Matches.repo)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          "ref=$($Matches.ref)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-
       - name: Checkout reusable workflow tools
         uses: actions/checkout@v5
         with:
-          repository: ${{ steps.workflow_source.outputs.repo }}
-          ref: ${{ steps.workflow_source.outputs.ref }}
+          repository: ${{ inputs.tools_repository }}
+          ref: ${{ inputs.tools_ref }}
           path: .pr-vi-history-tools
 
       - name: Resolve compare paths
